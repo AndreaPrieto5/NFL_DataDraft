@@ -2,7 +2,7 @@ import type { ReporteRival, ResumenNova } from './tipos'
 import { EQUIPOS_FALSOS, reporteFalso, resumenFalso } from './datosFalsos'
 
 // true: usa datos falsos. false: llama al backend.
-export const USAR_DATOS_FALSOS = true
+export const USAR_DATOS_FALSOS = false
 
 const pausa = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
