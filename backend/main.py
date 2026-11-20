@@ -36,11 +36,13 @@ SISTEMA_COACH = (
     "estadisticas de protección de pase de un equipo (semanas 1 a 8 de 2021). 'tasa' y "
     "'tasa_presion' son proporciones (0.25 = 25%). Escribe en español de 4 a 5 viñetas "
     "cortas para el cuerpo técnico del equipo que jugará contra ellos y prepara su plan "
-    "defensivo. Cada viñeta señala una debilidad de su protección y cómo puede aprovecharla "
+    "defensivo. Cada viñeta describe una tendencia de su protección de pase y qué ajuste puede hacer "
     "nuestra defensa (por qué lado cargar el pass rush, en qué downs enviar blitz), con el "
-    "número que la respalda. No des consejos para el equipo analizado. Usa solo los datos del JSON; no "
-    "inventes jugadores ni cifras. Ignora grupos con menos de 15 jugadas o snaps."
+    "número que la respalda. No des consejos para el equipo analizado. Usa solo los datos "
+    "del JSON; no inventes jugadores ni cifras. Ignora grupos con menos de 15 jugadas o snaps."
 )
+
+FILTRO = "blocked by our content filters"
 
 app = FastAPI(title="Hackathon NFL UNAM")
 
@@ -53,16 +55,18 @@ def nuevo_agente(sistema: str = SISTEMA) -> Agent:
     return Agent(model=modelo, system_prompt=sistema, callback_handler=None)
 
 
-def consultar_nova(sistema: str, texto: str) -> str:
-    try:
-        texto = str(nuevo_agente(sistema)(texto)).strip()
-    except Exception as e:  # la app debe seguir funcionando aunque la IA falle
-        raise HTTPException(
-            status_code=503, detail=f"La IA no está disponible: {type(e).__name__}"
-        )
-    if "blocked by our content filters" in texto:
-        raise HTTPException(status_code=503, detail="El filtro de contenido de Bedrock bloqueó la respuesta")
-    return texto
+def consultar_nova(sistema: str, texto: str, intentos: int = 3) -> str:
+    """Llama a Nova; si el filtro de contenido bloquea la respuesta, reintenta."""
+    for _ in range(intentos):
+        try:
+            respuesta = str(nuevo_agente(sistema)(texto)).strip()
+        except Exception as e:  # la app debe seguir funcionando aunque la IA falle
+            raise HTTPException(
+                status_code=503, detail=f"La IA no está disponible: {type(e).__name__}"
+            )
+        if FILTRO not in respuesta:
+            return respuesta
+    raise HTTPException(status_code=503, detail="El filtro de contenido de Bedrock bloqueó la respuesta")
 
 
 def obtener_reporte(equipo: str) -> dict:
@@ -86,6 +90,7 @@ class Respuesta(BaseModel):
 
 class Resumen(BaseModel):
     resumen: str
+    fuente: str = "nova"  # "nova" o "automatico"
 
 
 @app.get("/health")
@@ -110,7 +115,11 @@ def reporte_rival(equipo: str) -> dict:
 def resumen_rival(equipo: str) -> Resumen:
     """Nova redacta recomendaciones para el coach a partir del reporte ya calculado."""
     r = obtener_reporte(equipo)
-    texto = consultar_nova(SISTEMA_COACH, json.dumps(r, ensure_ascii=False))
+    try:
+        texto = consultar_nova(SISTEMA_COACH, json.dumps(r, ensure_ascii=False))
+    except HTTPException:
+        # Si Nova no responde, el coach recibe un resumen calculado con los mismos datos.
+        return Resumen(resumen=rival.resumen_basico(r), fuente="automatico")
     return Resumen(resumen=texto)
 
 

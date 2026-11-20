@@ -24,4 +24,5 @@ export interface ReporteRival {
 
 export interface ResumenNova {
   resumen: string
+  fuente?: string // 'nova' o 'automatico'
 }
