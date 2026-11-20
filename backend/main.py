@@ -1,4 +1,5 @@
 """API de la plantilla. Ejecuta: .venv/Scripts/uvicorn backend.main:app --reload"""
+import json
 import os
 from pathlib import Path
 
@@ -20,6 +21,8 @@ from pydantic import BaseModel, Field  # noqa: E402
 from strands import Agent  # noqa: E402
 from strands.models import BedrockModel  # noqa: E402
 
+from backend import rival  # noqa: E402
+
 MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.amazon.nova-pro-v1:0")
 REGION = os.environ.get("AWS_REGION", "us-east-1")
 
@@ -28,15 +31,48 @@ SISTEMA = (
     "de la UNAM. Responde en español, de forma clara y breve."
 )
 
+SISTEMA_COACH = (
+    "Eres analista de datos deportivos de futbol americano. Recibes un reporte en JSON con "
+    "estadisticas de protección de pase de un equipo (semanas 1 a 8 de 2021). 'tasa' y "
+    "'tasa_presion' son proporciones (0.25 = 25%). Escribe en español de 4 a 5 viñetas "
+    "cortas para el cuerpo técnico del equipo que jugará contra ellos y prepara su plan "
+    "defensivo. Cada viñeta señala una debilidad de su protección y cómo puede aprovecharla "
+    "nuestra defensa (por qué lado cargar el pass rush, en qué downs enviar blitz), con el "
+    "número que la respalda. No des consejos para el equipo analizado. Usa solo los datos del JSON; no "
+    "inventes jugadores ni cifras. Ignora grupos con menos de 15 jugadas o snaps."
+)
+
 app = FastAPI(title="Hackathon NFL UNAM")
 
 
-def nuevo_agente() -> Agent:
+def nuevo_agente(sistema: str = SISTEMA) -> Agent:
     # Un agente por petición para no mezclar conversaciones entre usuarios.
     modelo = BedrockModel(
         model_id=MODEL_ID, region_name=REGION, temperature=0.3, max_tokens=800
     )
-    return Agent(model=modelo, system_prompt=SISTEMA, callback_handler=None)
+    return Agent(model=modelo, system_prompt=sistema, callback_handler=None)
+
+
+def consultar_nova(sistema: str, texto: str) -> str:
+    try:
+        texto = str(nuevo_agente(sistema)(texto)).strip()
+    except Exception as e:  # la app debe seguir funcionando aunque la IA falle
+        raise HTTPException(
+            status_code=503, detail=f"La IA no está disponible: {type(e).__name__}"
+        )
+    if "blocked by our content filters" in texto:
+        raise HTTPException(status_code=503, detail="El filtro de contenido de Bedrock bloqueó la respuesta")
+    return texto
+
+
+def obtener_reporte(equipo: str) -> dict:
+    try:
+        r = rival.reporte(equipo.upper())
+    except FileNotFoundError:
+        raise HTTPException(status_code=503, detail="No se encontraron los datos en data/")
+    if r is None:
+        raise HTTPException(status_code=404, detail=f"Equipo no encontrado: {equipo}")
+    return r
 
 
 class Pregunta(BaseModel):
@@ -48,19 +84,37 @@ class Respuesta(BaseModel):
     modelo: str
 
 
+class Resumen(BaseModel):
+    resumen: str
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/api/equipos")
+def listar_equipos() -> list[str]:
+    try:
+        return rival.equipos()
+    except FileNotFoundError:
+        raise HTTPException(status_code=503, detail="No se encontraron los datos en data/")
+
+
+@app.get("/api/rival/{equipo}")
+def reporte_rival(equipo: str) -> dict:
+    return obtener_reporte(equipo)
+
+
+@app.post("/api/rival/{equipo}/resumen", response_model=Resumen)
+def resumen_rival(equipo: str) -> Resumen:
+    """Nova redacta recomendaciones para el coach a partir del reporte ya calculado."""
+    r = obtener_reporte(equipo)
+    texto = consultar_nova(SISTEMA_COACH, json.dumps(r, ensure_ascii=False))
+    return Resumen(resumen=texto)
+
+
 @app.post("/api/ia/preguntar", response_model=Respuesta)
 def preguntar(datos: Pregunta) -> Respuesta:
     """Envía una pregunta a Amazon Nova (Bedrock) y devuelve su respuesta."""
-    try:
-        resultado = nuevo_agente()(datos.pregunta)
-        texto = str(resultado).strip()
-    except Exception as e:  # la app debe seguir funcionando aunque la IA falle
-        raise HTTPException(
-            status_code=503, detail=f"La IA no está disponible: {type(e).__name__}"
-        )
-    return Respuesta(respuesta=texto, modelo=MODEL_ID)
+    return Respuesta(respuesta=consultar_nova(SISTEMA, datos.pregunta), modelo=MODEL_ID)
