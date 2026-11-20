@@ -117,3 +117,33 @@ def reporte(equipo: str) -> dict | None:
             for r in forma.itertuples()
         ],
     }
+
+def resumen_basico(r: dict) -> str:
+    """Resumen sin IA con las mismas cifras del reporte (respaldo si Nova falla)."""
+    dif = r["tasa_presion"] - r["tasa_presion_liga"]
+    lado = "por encima" if dif > 0 else "por debajo"
+    lineas = [
+        f"• Reciben presión en el {r['tasa_presion']:.1%} de sus pases, "
+        f"{abs(dif) * 100:.1f} puntos {lado} del promedio de la liga ({r['tasa_presion_liga']:.1%})."
+    ]
+    pos = [p for p in r["por_posicion"] if p["posicion"] in LINEA and p["snaps"] >= 15]
+    if pos:
+        p = max(pos, key=lambda x: x["tasa"])
+        lineas.append(
+            f"• Punto débil de la protección: {p['posicion']}, con {p['presiones']} presiones "
+            f"en {p['snaps']} snaps ({p['tasa']:.1%}). Cargar el pass rush por ese lado."
+        )
+    sit = [s for s in r["por_situacion"] if s["jugadas"] >= 15]
+    if sit:
+        s = max(sit, key=lambda x: x["tasa_presion"])
+        lineas.append(
+            f"• Situación con más presión: {s['situacion']}, {s['tasa_presion']:.1%} de sus pases "
+            f"({s['jugadas']} jugadas). Buen momento para enviar blitz."
+        )
+    form = [f for f in r["por_formacion"] if f["jugadas"] >= 15]
+    if form:
+        f = max(form, key=lambda x: x["tasa_presion"])
+        lineas.append(
+            f"• Formación con más presión: {f['formacion']}, {f['tasa_presion']:.1%} en {f['jugadas']} jugadas."
+        )
+    return "\n".join(lineas)
