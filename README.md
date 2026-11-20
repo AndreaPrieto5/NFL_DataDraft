@@ -55,7 +55,7 @@ Son solo 8 semanas, así que los grupos con pocas jugadas son poco estables, y l
 
 ## Correrlo
 
-Los datos del Big Data Bowl van en `data/nfl-big-data-bowl-regional-event-data-main/data/` (no están en git). Para el resumen de IA, copiar `.env.example` a `.env` con las llaves del workshop.
+Para el resumen de IA, copiar `.env.example` a `.env` con las llaves del workshop.
 
 ```
 .venv/bin/uvicorn backend.main:app          # Windows: .venv/Scripts/uvicorn
