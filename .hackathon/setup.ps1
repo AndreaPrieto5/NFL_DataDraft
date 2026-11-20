@@ -1,17 +1,6 @@
 # Envoltorio Windows: localiza un Python minimo y ejecuta setup.py.
 # Si no hay Python utilizable, descarga uv (version fija) dentro de esta carpeta y uv provee Python.
 $ErrorActionPreference = 'Stop'
-
-# Ignorar errores de certificado SSL (redes con proxy corporativo/universitario)
-Add-Type @"
-using System.Net;
-using System.Security.Cryptography.X509Certificates;
-public class TrustAllCerts : ICertificatePolicy {
-    public bool CheckValidationResult(ServicePoint srvPoint, X509Certificate certificate, WebRequest request, int certificateProblem) { return true; }
-}
-"@
-[System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCerts
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $Aqui = Split-Path -Parent $MyInvocation.MyCommand.Path
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $env:PYTHONIOENCODING = 'utf-8'
@@ -22,12 +11,7 @@ foreach ($c in $VenvPy, 'python', 'py') {
   # ignora el alias de Microsoft Store (WindowsApps) que no es un Python real
   if ($p -and $p.Source -notlike '*WindowsApps*') {
     & $p.Source -c "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)" 2>$null
-    if ($LASTEXITCODE -eq 0) {
-      $env:PYTHONHTTPSVERIFY = '0'
-      $env:SSL_CERT_FILE = ''
-      $env:REQUESTS_CA_BUNDLE = ''
-      & $p.Source "$Aqui\setup.py" @args; exit $LASTEXITCODE
-    }
+    if ($LASTEXITCODE -eq 0) { & $p.Source "$Aqui\setup.py" @args; exit $LASTEXITCODE }
   }
 }
 Write-Host "No encontre Python 3.8+. Descargo uv $($Stack.uv) dentro de esta carpeta para obtenerlo..."

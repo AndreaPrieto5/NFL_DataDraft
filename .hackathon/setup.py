@@ -22,7 +22,6 @@ import platform
 import re
 import shutil
 import subprocess
-import ssl
 import sys
 import tarfile
 import time
@@ -36,9 +35,6 @@ for _f in (sys.stdout, sys.stderr):
         _f.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
-
-# Deshabilitar verificación SSL para redes con proxy corporativo/universitario
-ssl._create_default_https_context = ssl._create_unverified_context
 
 INFRA_DIR = Path(__file__).resolve().parent             # carpeta .hackathon/
 SCRIPT_DIR = INFRA_DIR.parent                           # raíz de la plantilla o del proyecto

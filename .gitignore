@@ -14,3 +14,6 @@ __pycache__/
 *.pem
 *.key
 .aws/
+data/*
+!data/.gitkeep
+setup-log.txt
